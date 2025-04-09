@@ -1,0 +1,91 @@
+import os
+import subprocess
+import sys
+
+def validate_dicom_folder(folder_path: str) -> bool:
+    """Check if folder contains DICOM-like files"""
+    for f in os.listdir(folder_path):
+        if f.lower().endswith('.dcm') or (not '.' in f):  # DICOM often has no extension
+            return True
+    return False
+
+def run_pancreas_segmentation(dicom_folder: str, output_folder: str):
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+
+        if not validate_dicom_folder(dicom_folder):
+            print(f"경고: DICOM 파일이 없는 것으로 보입니다 - {dicom_folder}")
+            return False
+
+        # TotalSegmentator 명령어 (버전에 따라 다를 수 있음)
+        segmentator_cmd = "TotalSegmentator"  # 또는 "total-segmentator" 환경에 따라 확인
+
+        command = [
+            segmentator_cmd,
+            "-i", dicom_folder,
+            "-o", output_folder,
+            "--roi", "pancreas",
+            "--fast",
+            "--ml"  # DICOM series 허용
+        ]
+
+        result = subprocess.run(command, check=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True)
+        print(f"완료: {os.path.basename(dicom_folder)}")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        print(f"[X] 처리 실패: {dicom_folder}")
+        print("오류 메시지:")
+        print(e.stderr)
+        return False
+
+    except Exception as e:
+        print(f"예상치 못한 오류: {dicom_folder}")
+        print(str(e))
+        return False
+
+def main():
+    print("공유 폴더 경로 예시: /mnt/shared/CT_DICOM 또는 C:\\Users\\User\\Desktop\\DICOM")
+    input_root = input("공유 폴더의 전체 경로를 입력하세요: ").strip()
+    input_root = os.path.normpath(input_root)
+
+    if not os.path.exists(input_root):
+        print(f"해당 경로가 존재하지 않습니다: {input_root}")
+        sys.exit(1)
+
+    # 출력 루트 자동 설정
+    output_root = os.path.join(
+        os.path.dirname(input_root),
+        os.path.basename(input_root) + "_pancreas_output"
+    )
+    os.makedirs(output_root, exist_ok=True)
+
+    # 환자 폴더 탐색
+    patient_folders = sorted([
+        f for f in os.listdir(input_root)
+        if os.path.isdir(os.path.join(input_root, f))
+    ])
+
+    if not patient_folders:
+        print("환자 폴더가 없습니다.")
+        sys.exit(1)
+
+    print(f"\n[INFO] 총 {len(patient_folders)}명의 환자 폴더를 찾았습니다.\n")
+
+    success_count = 0
+    for folder_name in patient_folders:
+        dicom_path = os.path.join(input_root, folder_name)
+        output_folder_name = folder_name + "_pan"
+        output_path = os.path.join(output_root, output_folder_name)
+
+        print(f"\n→ [{folder_name}] 처리 시작...")
+        if run_pancreas_segmentation(dicom_path, output_path):
+            success_count += 1
+
+    print(f"\n[결과] 총 {len(patient_folders)}명 중 {success_count}명 처리 성공")
+
+if __name__ == "__main__":
+    main()
