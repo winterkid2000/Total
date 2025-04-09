@@ -1,0 +1,98 @@
+import os
+import subprocess
+import sys
+import nibabel as nib
+import numpy as np
+from tqdm import tqdm
+
+def validate_dicom_folder(folder_path: str) -> bool:
+    for f in os.listdir(folder_path):
+        if f.lower().endswith('.dcm') or (not '.' in f):  # 확장자 없거나 .dcm이면 OK
+            return True
+    return False
+
+def run_pancreas_segmentation(dicom_folder: str, output_folder: str) -> bool:
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+
+        if not validate_dicom_folder(dicom_folder):
+            print(f"경고: DICOM 파일이 없는 것으로 보입니다 - {dicom_folder}")
+            return False
+
+        segmentator_cmd = "TotalSegmentator"  # 또는 환경에 따라 "total_segmentator"로 수정
+
+        command = [
+            segmentator_cmd,
+            "-i", dicom_folder,
+            "-o", output_folder,
+            "--roi", "pancreas",
+            "--fast",
+            "--ml"
+        ]
+
+        result = subprocess.run(command, check=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True)
+        print(f"TotalSegmentator 완료: {os.path.basename(dicom_folder)}")
+        return True
+
+    except subprocess.CalledProcessError as e:
+        print(f"TotalSegmentator 실패: {dicom_folder}")
+        print("STDOUT:\n", e.stdout)
+        print("STDERR:\n", e.stderr)
+        return False
+
+    except Exception as e:
+        print(f"예상치 못한 오류: {dicom_folder}")
+        print(str(e))
+        return False
+
+def split_pancreas_mask_to_slices(pancreas_nii_path: str, output_dir: str):
+    os.makedirs(output_dir, exist_ok=True)
+
+    img = nib.load(pancreas_nii_path)
+    data = img.get_fdata()
+    affine = img.affine
+    num_slices = data.shape[2]
+
+    count = 0
+    print("슬라이스 저장 중...")
+    for i in tqdm(range(num_slices), desc="진행률"):
+        slice_data = data[:, :, i]
+        
+        if np.max(slice_data) > 0:
+            slice_3d = slice_data[:, :, np.newaxis]
+            slice_img = nib.Nifti1Image(slice_3d, affine)
+            output_path = os.path.join(output_dir, f"pancreas_slice_{i+1:03}.nii.gz")
+            nib.save(slice_img, output_path)
+            count += 1
+
+    print(f"췌장이 포함된 {count}개의 슬라이스가 저장되었습니다: {output_dir}/")
+
+def main():
+    print("예시: /mnt/shared/CT_DICOM/patient01 또는 C:\\Users\\User\\Desktop\\DICOM\\patient01")
+    dicom_path = input("환자 DICOM 폴더 경로를 입력하세요: ").strip()
+    dicom_path = os.path.normpath(dicom_path)
+
+    if not os.path.exists(dicom_path):
+        print(f"해당 경로가 존재하지 않습니다: {dicom_path}")
+        sys.exit(1)
+
+    output_folder = dicom_path + "_pancreas_output"
+
+    print(f"\n[{os.path.basename(dicom_path)}] TotalSegmentator 실행 중...")
+    if run_pancreas_segmentation(dicom_path, output_folder):
+        pancreas_nii_path = os.path.join(output_folder, "segmentations", "pancreas.nii.gz")
+        slice_output_dir = os.path.join(output_folder, "segmentations", "pancreas_slices")
+
+        if os.path.exists(pancreas_nii_path):
+            print("췌장 마스크 슬라이스 분할 중...")
+            split_pancreas_mask_to_slices(pancreas_nii_path, slice_output_dir)
+        else:
+            print("pancreas.nii.gz 파일이 존재하지 않습니다.")
+    else:
+        print("TotalSegmentator 처리 실패")
+
+if __name__ == "__main__":
+    main()
