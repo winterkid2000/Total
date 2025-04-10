@@ -9,7 +9,7 @@ def validate_dicom_folder(folder_path: str) -> bool:
             return True
     return False
 
-def run_pancreas_segmentation(dicom_folder: str, output_path: str):
+def run_pancreas_segmentation(dicom_folder: str, output_path: str, phase: str, patient_id: str) -> bool:
     try:
         if not validate_dicom_folder(dicom_folder):
             print(f"DICOM 파일이 없는 것으로 보입니다: {dicom_folder}")
@@ -31,8 +31,13 @@ def run_pancreas_segmentation(dicom_folder: str, output_path: str):
         result = subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         print(f"처리 완료: {dicom_folder}")
 
+        # OUT 폴더 생성
+        out_dir = os.path.join(output_path, "OUT")
+        os.makedirs(out_dir, exist_ok=True)
+
         # 로그 저장
-        log_file_path = os.path.join(output_path, "pancreas_segmentation_log.txt")
+        log_file_name = f"{phase}_{patient_id}_log.txt"
+        log_file_path = os.path.join(out_dir, log_file_name)
         with open(log_file_path, "w", encoding="utf-8") as log_file:
             log_file.write("=== STDOUT ===\n")
             log_file.write(result.stdout)
@@ -53,12 +58,15 @@ def run_pancreas_segmentation(dicom_folder: str, output_path: str):
         print(str(e))
         return False
 
-def rename_output(original_folder: str, phase: str) -> bool:
-    """output 폴더 안의 pancreas.nii.gz를 PRE/POST_pancreas.nii.gz로 해당 폴더에 복사"""
+def rename_output(original_folder: str, phase: str, patient_id: str) -> bool:
+    """pancreas.nii.gz → OUT/PRE_001_pancreas.nii.gz 형식으로 저장"""
     output_file = os.path.join(original_folder, "pancreas.nii.gz")
     if os.path.exists(output_file):
-        new_name = f"{phase}_pancreas.nii.gz"
-        target_path = os.path.join(original_folder, new_name)
+        out_dir = os.path.join(original_folder, "OUT")
+        os.makedirs(out_dir, exist_ok=True)
+
+        new_name = f"{phase}_{patient_id}_pancreas.nii.gz"
+        target_path = os.path.join(out_dir, new_name)
         os.rename(output_file, target_path)
         print(f"→ 저장 완료: {target_path}")
         return True
@@ -88,8 +96,8 @@ def main():
 
             if os.path.isdir(phase_folder):
                 print(f"\n처리 중: {phase_folder}")
-                if run_pancreas_segmentation(phase_folder, phase_folder):
-                    if not rename_output(phase_folder, phase):
+                if run_pancreas_segmentation(phase_folder, phase_folder, phase, patient_id):
+                    if not rename_output(phase_folder, phase, patient_id):
                         failed_cases.append(f"{patient_id}/{phase} (결과 파일 없음)")
                 else:
                     failed_cases.append(f"{patient_id}/{phase} (segmentation 실패)")
