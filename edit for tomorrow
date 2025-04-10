@@ -1,14 +1,9 @@
-if failed_cases:
-        print("\n🔻 실패한 케이스 목록:")
-        for item in failed_cases:
-            print(" -", item)
-
         # 실패한 케이스를 파일로 저장
         failed_path = os.path.join(base_path, "failed_cases.txt")
         with open(failed_path, "w", encoding="utf-8") as f:
             for item in failed_cases:
                 f.write(item + "\n")
 
-        print(f"\n📄 실패한 목록이 저장되었습니다: {failed_path}")
+        print(f"\n 실패한 목록이 저장되었습니다: {failed_path}")
     else:
-        print("\n✅ 모든 케이스가 성공적으로 처리되었습니다.")
+        print("\n 모든 케이스가 성공적으로 처리되었습니다.")
